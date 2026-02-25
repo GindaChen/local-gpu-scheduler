@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+#  srun — acquire GPUs from the scheduler, then exec your command
+# ─────────────────────────────────────────────────────────────
+set -euo pipefail
+
+GPUSCHED_URL="${GPUSCHED_URL:-http://localhost:9123}"
+
+# ── colours ─────────────────────────────────────────────────
+if [[ -t 1 ]]; then
+  BOLD=$'\033[1m'  DIM=$'\033[2m'  RST=$'\033[0m'
+  GRN=$'\033[32m'  YLW=$'\033[33m'  RED=$'\033[31m'
+else
+  BOLD="" DIM="" RST="" GRN="" YLW="" RED=""
+fi
+
+die() { echo "${RED}error:${RST} $*" >&2; exit 1; }
+
+# ── parse args ──────────────────────────────────────────────
+ngpus=1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -n|--num-gpus) ngpus="$2"; shift 2 ;;
+    -h|--help)
+      cat <<EOF
+${BOLD}srun${RST} — acquire GPUs and run a command
+
+${BOLD}Usage:${RST}  srun [-n NUM_GPUS] command [args...]
+
+${BOLD}Options:${RST}
+  -n, --num-gpus N   Number of GPUs needed (default: 1)
+
+${BOLD}Example:${RST}
+  srun python train.py --epochs 50
+  srun -n 2 torchrun --nproc_per_node=2 train.py
+
+${DIM}Blocks until GPUs are available, then runs your command.${RST}
+EOF
+      exit 0 ;;
+    *) break ;;
+  esac
+done
+
+[[ $# -eq 0 ]] && die "no command given — usage: srun [-n N] command [args...]"
+
+command -v curl &>/dev/null || die "'curl' is required"
+command -v jq   &>/dev/null || die "'jq' is required"
+
+# ── request GPUs from scheduler ─────────────────────────────
+pid=$$
+echo "${DIM}srun: requesting ${ngpus} GPU(s) from scheduler (pid=${pid})...${RST}"
+
+resp=$(curl -sf -X POST -H "Content-Type: application/json" \
+  -d "{\"pid\":${pid},\"num_gpus\":${ngpus}}" \
+  "${GPUSCHED_URL}/acquire" 2>/dev/null) \
+  || die "cannot reach scheduler at ${GPUSCHED_URL} — is the server running?"
+
+gpus=$(echo "$resp" | jq -r '.gpus')
+job_id=$(echo "$resp" | jq -r '.job_id')
+
+[[ "$gpus" == "null" || -z "$gpus" ]] && die "scheduler returned no GPUs"
+
+echo "${GRN}srun: acquired GPU(s) ${BOLD}${gpus}${RST}${GRN} (job=${job_id})${RST}"
+
+# ── exec the user's command with assigned GPUs ──────────────
+export CUDA_VISIBLE_DEVICES="$gpus"
+exec "$@"
