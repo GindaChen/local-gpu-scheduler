@@ -4,17 +4,9 @@
 
 ## What This Is
 
-A minimal local GPU job scheduler. A Python server runs on port `9123` managing GPU allocation via `nvidia-smi`. The `srun` shell script is the primary user interface — it acquires GPUs then `exec`s the user's command.
+A minimal local GPU job scheduler. A Python server on port `9123` manages GPU allocation via `nvidia-smi`. The `srun` shell script acquires GPUs then `exec`s the user's command.
 
-## Architecture
-
-```
-srun (bash)  ──POST /acquire──▶  server.py (:9123)  ──▶  nvidia-smi
-                                     │
-                                     ├── /status   GET  identity + health
-                                     ├── /jobs     GET  list all jobs
-                                     └── /acquire  POST blocks until GPUs free
-```
+**Repo:** https://github.com/GindaChen/local-gpu-scheduler
 
 ## Server Endpoints
 
@@ -24,67 +16,50 @@ srun (bash)  ──POST /acquire──▶  server.py (:9123)  ──▶  nvidia-
 | `GET` | `/jobs` | All jobs with id, status, gpus, pid |
 | `POST` | `/acquire` | Request GPUs (blocks until assigned). Body: `{"pid": int, "num_gpus": int}` |
 
-### Identifying the Server
-
-To verify the server is running and is this scheduler:
+### Verify the server is running
 
 ```bash
-curl -s localhost:9123/status | jq .
+curl -sf http://localhost:9123/status | jq .service
+# Should return: "local-gpu-scheduler"
 ```
-
-Expected response:
-```json
-{
-  "service": "local-gpu-scheduler",
-  "version": "0.1.0",
-  "uptime_s": 3600,
-  "port": 9123,
-  "gpus_total": 8,
-  "gpus_allocated": [0, 2],
-  "jobs_running": 2,
-  "jobs_queued": 1,
-  "jobs_total": 5
-}
-```
-
-Check `"service": "local-gpu-scheduler"` to confirm identity.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `server.py` | HTTP server — FIFO queue, GPU dispatch, PID monitoring |
+| `srun` | Shell CLI — acquires GPUs, `exec`s command |
+| `server.py` | HTTP server — FIFO queue, PID monitoring |
 | `gpu.py` | Wraps `nvidia-smi` for GPU detection |
-| `srun` | Shell CLI — acquires GPUs, sets `CUDA_VISIBLE_DEVICES`, `exec`s command |
-| `run_server.py` | Entry point: `python run_server.py` |
-| `test_scheduler.py` | Tests: `python -m unittest test_scheduler -v` |
+| `tui.py` | Live dashboard |
+| `run_server.py` | Entry point (`--detach`, `--port`) |
 
-## How to Use Programmatically
+---
 
-### Acquire GPUs (what `srun` does)
+## Snippet for Other Projects
 
-```bash
-curl -s -X POST -H "Content-Type: application/json" \
-  -d '{"pid": '$$$', "num_gpus": 1}' \
-  http://localhost:9123/acquire
-# Blocks until GPU assigned, returns: {"job_id": "abc123", "gpus": "0"}
-```
+Drop this into any project's `AGENTS.md` to make agents use `srun`:
 
-### Check Server Health
+````markdown
+## GPU Scheduling (Shared Machine)
+
+This machine uses a shared GPU scheduler. Use `srun` to acquire GPUs before running GPU workloads.
 
 ```bash
-curl -sf http://localhost:9123/status > /dev/null && echo "up" || echo "down"
+# Run on 1 GPU
+srun python train.py
+
+# Run on multiple GPUs
+srun -n 4 torchrun --nproc_per_node=4 train.py
 ```
 
-### List Running Jobs
-
+If `srun` is not installed, install it:
 ```bash
-curl -s http://localhost:9123/jobs | jq '.[] | select(.status == "running")'
+git clone https://github.com/GindaChen/local-gpu-scheduler.git /tmp/gpu-scheduler
+echo 'export PATH="/tmp/gpu-scheduler:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
-## Environment Variables
-
-| Var | Default | Description |
-|-----|---------|-------------|
-| `GPUSCHED_PORT` | `9123` | Server port |
-| `GPUSCHED_URL` | `http://localhost:9123` | Where `srun` connects |
+If the scheduler server is not running (`srun` hangs or errors), start it:
+```bash
+python /tmp/gpu-scheduler/run_server.py --detach
+```
+````
