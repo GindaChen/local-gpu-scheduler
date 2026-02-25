@@ -1,9 +1,10 @@
 """Minimal GPU job scheduler server — stdlib only."""
 import http.server, json, os, signal, threading, time, uuid
 
-from gpu import get_free_gpu_indices
+from gpu import get_all_gpus, get_free_gpu_indices
 
 PORT = int(os.environ.get("GPUSCHED_PORT", 9123))
+START_TIME = time.time()
 
 # ── Job store ──────────────────────────────────────────────────────────
 lock = threading.Lock()
@@ -67,7 +68,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass  # silence per-request logs
 
     def do_GET(self):
-        if self.path == "/jobs":
+        if self.path == "/status":
+            with lock:
+                running = [j for j in jobs.values() if j["status"] == "running"]
+                self._json(200, {
+                    "service": "local-gpu-scheduler",
+                    "version": "0.1.0",
+                    "uptime_s": round(time.time() - START_TIME),
+                    "port": PORT,
+                    "gpus_total": len(get_all_gpus()),
+                    "gpus_allocated": list(gpu_alloc.keys()),
+                    "jobs_running": len(running),
+                    "jobs_queued": len(waiters),
+                    "jobs_total": len(jobs),
+                })
+        elif self.path == "/jobs":
             with lock:
                 self._json(200, [{"id": jid, **{k: v for k, v in j.items() if k != "pid"},
                                    "pid": j["pid"]} for jid, j in jobs.items()])
