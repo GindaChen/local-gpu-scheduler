@@ -19,13 +19,13 @@ usage() {
 ${BOLD}srun-server${RST} — manage the GPU scheduler server
 
 ${BOLD}Usage:${RST}
-  srun-server start [--tmux] [--port PORT]   Start the server
-  srun-server stop                           Stop the server
-  srun-server tui                            Open the TUI dashboard
-  srun-server status                         Check if running
+  srun-server start [--no-tmux] [--port PORT]   Start the server
+  srun-server stop                              Stop the server
+  srun-server tui                               Open the TUI dashboard
+  srun-server status                            Check if running
 
 ${BOLD}Options:${RST}
-  --tmux    Start server + TUI in a tmux session (split panes)
+  --no-tmux   Run in foreground instead of tmux (default: tmux)
 
 ${DIM}Default port: 9123${RST}
 EOF
@@ -48,11 +48,11 @@ check_port() {
 case "${1:-}" in
   start)
     shift
-    use_tmux=false
+    use_tmux=true
     extra_args=()
     while [[ $# -gt 0 ]]; do
       case "$1" in
-        --tmux) use_tmux=true; shift ;;
+        --no-tmux) use_tmux=false; shift ;;
         --port) PORT="$2"; extra_args+=(--port "$2"); shift 2 ;;
         *) extra_args+=("$1"); shift ;;
       esac
