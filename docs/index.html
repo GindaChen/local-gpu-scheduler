@@ -395,10 +395,13 @@
           <div class="terminal-title">terminal</div>
         </div>
         <div class="terminal-body">
-          <span class="out"># Start server + TUI in tmux</span><br>
+          <span class="out"># Start the server</span><br>
           <span class="prompt">$</span> <span class="cmd">srun-server start</span><br>
+          <span class="ok">gpusched server on :9123</span><br>
+          <br>
+          <span class="out"># Or with TUI in tmux</span><br>
+          <span class="prompt">$</span> <span class="cmd">srun-server start --tmux</span><br>
           <span class="ok">✓ Scheduler started in tmux session 'gpusched'</span><br>
-          <span class="out"> Attach with: tmux attach -t gpusched</span><br>
         </div>
       </div>
       <div class="terminal">
@@ -441,7 +444,7 @@
           <h3>srun-server</h3>
           <p>Manage the scheduler</p>
           <code>srun-server start</code><br>
-          <code>srun-server stop</code>
+          <code>srun-server start --tmux</code>
         </div>
         <div class="cmd-card">
           <h3>srun status / jobs</h3>

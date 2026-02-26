@@ -5,12 +5,13 @@
 set -euo pipefail
 
 SRUN_DIR="$(cd "$(dirname "$0")" && pwd)"
+PORT="${GPUSCHED_PORT:-9123}"
 
 if [[ -t 1 ]]; then
   BOLD=$'\033[1m'  DIM=$'\033[2m'  RST=$'\033[0m'
-  GRN=$'\033[32m'  RED=$'\033[31m'
+  GRN=$'\033[32m'  YLW=$'\033[33m'  RED=$'\033[31m'
 else
-  BOLD="" DIM="" RST="" GRN="" RED=""
+  BOLD="" DIM="" RST="" GRN="" YLW="" RED=""
 fi
 
 usage() {
@@ -18,56 +19,86 @@ usage() {
 ${BOLD}srun-server${RST} — manage the GPU scheduler server
 
 ${BOLD}Usage:${RST}
-  srun-server start [--port PORT]   Start server + TUI in a tmux session
-  srun-server stop                  Stop the daemon
-  srun-server fg [--port PORT]      Run server in foreground (no tmux)
-  srun-server tui                   Open the TUI dashboard
-  srun-server status                Check if running
+  srun-server start [--tmux] [--port PORT]   Start the server
+  srun-server stop                           Stop the server
+  srun-server tui                            Open the TUI dashboard
+  srun-server status                         Check if running
+
+${BOLD}Options:${RST}
+  --tmux    Start server + TUI in a tmux session (split panes)
 
 ${DIM}Default port: 9123${RST}
 EOF
 }
 
+# Check if something is already on the port; identify if it's us
+check_port() {
+  resp=$(curl -sf "http://localhost:${PORT}/status" 2>/dev/null || true)
+  if [ -n "$resp" ]; then
+    svc=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('service',''))" 2>/dev/null || true)
+    if [ "$svc" = "local-gpu-scheduler" ]; then
+      echo "${GRN}✓ Scheduler is already running on port ${PORT}${RST}"
+    else
+      echo "${YLW}⚠ Port ${PORT} is in use by another service${RST}"
+    fi
+    exit 0
+  fi
+}
+
 case "${1:-}" in
   start)
     shift
-    # Launch server + TUI in a tmux session with split panes
-    if tmux has-session -t gpusched 2>/dev/null; then
-      echo "${GRN}Session 'gpusched' already running. Attach with: tmux attach -t gpusched${RST}"
-      exit 0
+    use_tmux=false
+    extra_args=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --tmux) use_tmux=true; shift ;;
+        --port) PORT="$2"; extra_args+=(--port "$2"); shift 2 ;;
+        *) extra_args+=("$1"); shift ;;
+      esac
+    done
+
+    check_port
+
+    if $use_tmux; then
+      if tmux has-session -t gpusched 2>/dev/null; then
+        echo "${GRN}Session 'gpusched' already running. Attach with: tmux attach -t gpusched${RST}"
+        exit 0
+      fi
+      tmux new-session -d -s gpusched -n server "GPUSCHED_PORT=$PORT python3 $SRUN_DIR/run_server.py ${extra_args[*]:-}"
+      sleep 0.5
+      tmux split-window -t gpusched -v "GPUSCHED_PORT=$PORT python3 $SRUN_DIR/srun-tui"
+      tmux select-pane -t gpusched:0.0
+      echo "${GRN}✓ Scheduler started in tmux session 'gpusched'${RST}"
+      echo "${DIM}  Attach with: tmux attach -t gpusched${RST}"
+    else
+      python3 "$SRUN_DIR/run_server.py" "${extra_args[@]:-}"
     fi
-    tmux new-session -d -s gpusched -n server "python3 $SRUN_DIR/run_server.py $*"
-    sleep 0.5
-    tmux split-window -t gpusched -v "python3 $SRUN_DIR/srun-tui"
-    tmux select-pane -t gpusched:0.0
-    echo "${GRN}✓ Scheduler started in tmux session 'gpusched'${RST}"
-    echo "${DIM}  Attach with: tmux attach -t gpusched${RST}"
     ;;
   stop)
     if tmux has-session -t gpusched 2>/dev/null; then
       tmux kill-session -t gpusched
       echo "${GRN}✓ Stopped tmux session 'gpusched'${RST}"
     else
-      # Fallback: find by port
-      pid=$(lsof -ti :${GPUSCHED_PORT:-9123} 2>/dev/null | head -1 || true)
+      pid=$(lsof -ti :"${PORT}" 2>/dev/null | head -1 || true)
       if [ -n "$pid" ]; then
         kill "$pid" 2>/dev/null && echo "${GRN}✓ Stopped (pid=$pid)${RST}"
       else
-        echo "${DIM}No scheduler found running${RST}"
+        echo "${DIM}No scheduler found running on port ${PORT}${RST}"
       fi
     fi
-    ;;
-  fg)
-    shift
-    python3 "$SRUN_DIR/run_server.py" "$@"
     ;;
   tui)
     python3 "$SRUN_DIR/srun-tui"
     ;;
   status)
-    curl -sf http://localhost:${GPUSCHED_PORT:-9123}/status | python3 -m json.tool 2>/dev/null \
-      && echo "${GRN}✓ Server is running${RST}" \
-      || echo "${RED}✗ Server is not running${RST}"
+    resp=$(curl -sf "http://localhost:${PORT}/status" 2>/dev/null || true)
+    if [ -n "$resp" ]; then
+      echo "$resp" | python3 -m json.tool
+      echo "${GRN}✓ Server is running on port ${PORT}${RST}"
+    else
+      echo "${RED}✗ Server is not running on port ${PORT}${RST}"
+    fi
     ;;
   -h|--help|"")
     usage ;;
