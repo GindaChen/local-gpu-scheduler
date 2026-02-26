@@ -15,7 +15,35 @@ else
   BOLD="" DIM="" RST="" GRN="" YLW="" RED=""
 fi
 
-die() { echo "${RED}error:${RST} $*" >&2; exit 1; }
+usage() {
+  cat <<EOF
+${BOLD}srun${RST} — acquire GPUs and run a command
+
+${BOLD}Usage:${RST}
+  srun [-n NUM_GPUS] command [args...]   Run a GPU job
+  srun update                            Self-update (git pull)
+  srun status                            Show scheduler status
+  srun jobs                              List running jobs
+
+${BOLD}Options:${RST}
+  -n, --num-gpus N   Number of GPUs needed (default: 1)
+  -h, --help         Show this help
+
+${BOLD}Example:${RST}
+  srun python train.py --epochs 50
+  srun -n 2 torchrun --nproc_per_node=2 train.py
+
+${DIM}Blocks until GPUs are available, then runs your command.${RST}
+EOF
+}
+
+die() {
+  echo "" >&2
+  usage >&2
+  echo "" >&2
+  echo "${RED}error:${RST} $*" >&2
+  exit 1
+}
 
 # ── subcommands ─────────────────────────────────────────────
 case "${1:-}" in
@@ -32,6 +60,8 @@ case "${1:-}" in
     curl -sf "${GPUSCHED_URL}/jobs" | python3 -m json.tool 2>/dev/null \
       || die "cannot reach scheduler at ${GPUSCHED_URL}"
     exit 0 ;;
+  -h|--help)
+    usage; exit 0 ;;
 esac
 
 # ── parse args ──────────────────────────────────────────────
@@ -39,31 +69,13 @@ ngpus=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -n|--num-gpus) ngpus="$2"; shift 2 ;;
-    -h|--help)
-      cat <<EOF
-${BOLD}srun${RST} — acquire GPUs and run a command
-
-${BOLD}Usage:${RST}
-  srun [-n NUM_GPUS] command [args...]   Run a GPU job
-  srun update                            Self-update (git pull)
-  srun status                            Show scheduler status
-  srun jobs                              List running jobs
-
-${BOLD}Options:${RST}
-  -n, --num-gpus N   Number of GPUs needed (default: 1)
-
-${BOLD}Example:${RST}
-  srun python train.py --epochs 50
-  srun -n 2 torchrun --nproc_per_node=2 train.py
-
-${DIM}Blocks until GPUs are available, then runs your command.${RST}
-EOF
-      exit 0 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) die "unknown option '$1'" ;;
     *) break ;;
   esac
 done
 
-[[ $# -eq 0 ]] && die "no command given — usage: srun [-n N] command [args...]"
+[[ $# -eq 0 ]] && die "no command given"
 
 command -v curl &>/dev/null || die "'curl' is required — install with: sudo apt-get install -y curl"
 command -v jq   &>/dev/null || die "'jq' is required — install with: sudo apt-get install -y jq"
