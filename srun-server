@@ -65,14 +65,14 @@ case "${1:-}" in
         echo "${GRN}Session 'gpusched' already running. Attach with: tmux attach -t gpusched${RST}"
         exit 0
       fi
-      tmux new-session -d -s gpusched -n server "GPUSCHED_PORT=$PORT python3 $SRUN_DIR/run_server.py ${extra_args[*]:-}"
+      tmux new-session -d -s gpusched -n server "GPUSCHED_PORT=$PORT python3 $SRUN_DIR/run_server.py ${extra_args[*]+${extra_args[*]}}"
       sleep 0.5
       tmux split-window -t gpusched -v "GPUSCHED_PORT=$PORT python3 $SRUN_DIR/srun-tui"
       tmux select-pane -t gpusched:0.0
       echo "${GRN}✓ Scheduler started in tmux session 'gpusched'${RST}"
       echo "${DIM}  Attach with: tmux attach -t gpusched${RST}"
     else
-      python3 "$SRUN_DIR/run_server.py" "${extra_args[@]:-}"
+      python3 "$SRUN_DIR/run_server.py" ${extra_args[@]+"${extra_args[@]}"}
     fi
     ;;
   stop)
