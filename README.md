@@ -28,7 +28,7 @@ echo 'export PATH="'$(pwd)':$PATH"' >> ~/.bashrc && source ~/.bashrc
 ## Quick Start
 
 ```bash
-# 1. Start the server
+# 1. Start server + TUI in tmux
 srun-server start
 
 # 2. Run a GPU job (blocks until GPU available)
@@ -54,16 +54,17 @@ srun update                            # self-update (git pull)
 ### `srun-server` — manage the server
 
 ```bash
-srun-server start [--port PORT]        # start as daemon
-srun-server stop                       # stop the daemon
+srun-server start [--port PORT]        # start server + TUI in tmux
+srun-server stop                       # stop the tmux session
 srun-server status                     # check if running
-srun-server fg [--port PORT]           # run in foreground
+srun-server fg [--port PORT]           # run server in foreground
+srun-server tui                        # open TUI dashboard
 ```
 
 ### Monitor — TUI dashboard
 
 ```bash
-python tui.py                          # live GPU bar + job table (q to quit)
+srun-tui                               # live GPU bar + job table (q to quit)
 ```
 
 ---

@@ -18,9 +18,10 @@ usage() {
 ${BOLD}srun-server${RST} — manage the GPU scheduler server
 
 ${BOLD}Usage:${RST}
-  srun-server start [--port PORT]   Start in background (daemon)
+  srun-server start [--port PORT]   Start server + TUI in a tmux session
   srun-server stop                  Stop the daemon
-  srun-server fg [--port PORT]      Run in foreground
+  srun-server fg [--port PORT]      Run server in foreground (no tmux)
+  srun-server tui                   Open the TUI dashboard
   srun-server status                Check if running
 
 ${DIM}Default port: 9123${RST}
@@ -30,13 +31,22 @@ EOF
 case "${1:-}" in
   start)
     shift
-    echo "${DIM}Starting scheduler daemon...${RST}"
-    python3 "$SRUN_DIR/run_server.py" --detach "$@"
+    # Launch server + TUI in a tmux session with split panes
+    if tmux has-session -t gpusched 2>/dev/null; then
+      echo "${GRN}Session 'gpusched' already running. Attach with: tmux attach -t gpusched${RST}"
+      exit 0
+    fi
+    tmux new-session -d -s gpusched -n server "python3 $SRUN_DIR/run_server.py $*"
+    sleep 0.5
+    tmux split-window -t gpusched -v "python3 $SRUN_DIR/srun-tui"
+    tmux select-pane -t gpusched:0.0
+    echo "${GRN}✓ Scheduler started in tmux session 'gpusched'${RST}"
+    echo "${DIM}  Attach with: tmux attach -t gpusched${RST}"
     ;;
   stop)
-    pid=$(curl -sf http://localhost:${GPUSCHED_PORT:-9123}/status 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('pid',''))" 2>/dev/null || true)
-    if [ -n "$pid" ]; then
-      kill "$pid" 2>/dev/null && echo "${GRN}✓ Stopped (pid=$pid)${RST}" || echo "${RED}Could not stop pid $pid${RST}"
+    if tmux has-session -t gpusched 2>/dev/null; then
+      tmux kill-session -t gpusched
+      echo "${GRN}✓ Stopped tmux session 'gpusched'${RST}"
     else
       # Fallback: find by port
       pid=$(lsof -ti :${GPUSCHED_PORT:-9123} 2>/dev/null | head -1 || true)
@@ -50,6 +60,9 @@ case "${1:-}" in
   fg)
     shift
     python3 "$SRUN_DIR/run_server.py" "$@"
+    ;;
+  tui)
+    python3 "$SRUN_DIR/srun-tui"
     ;;
   status)
     curl -sf http://localhost:${GPUSCHED_PORT:-9123}/status | python3 -m json.tool 2>/dev/null \
