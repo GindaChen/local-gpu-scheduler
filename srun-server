@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+#  srun-server — start/stop the GPU scheduler server
+# ─────────────────────────────────────────────────────────────
+set -euo pipefail
+
+SRUN_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ -t 1 ]]; then
+  BOLD=$'\033[1m'  DIM=$'\033[2m'  RST=$'\033[0m'
+  GRN=$'\033[32m'  RED=$'\033[31m'
+else
+  BOLD="" DIM="" RST="" GRN="" RED=""
+fi
+
+usage() {
+  cat <<EOF
+${BOLD}srun-server${RST} — manage the GPU scheduler server
+
+${BOLD}Usage:${RST}
+  srun-server start [--port PORT]   Start in background (daemon)
+  srun-server stop                  Stop the daemon
+  srun-server fg [--port PORT]      Run in foreground
+  srun-server status                Check if running
+
+${DIM}Default port: 9123${RST}
+EOF
+}
+
+case "${1:-}" in
+  start)
+    shift
+    echo "${DIM}Starting scheduler daemon...${RST}"
+    python3 "$SRUN_DIR/run_server.py" --detach "$@"
+    ;;
+  stop)
+    pid=$(curl -sf http://localhost:${GPUSCHED_PORT:-9123}/status 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('pid',''))" 2>/dev/null || true)
+    if [ -n "$pid" ]; then
+      kill "$pid" 2>/dev/null && echo "${GRN}✓ Stopped (pid=$pid)${RST}" || echo "${RED}Could not stop pid $pid${RST}"
+    else
+      # Fallback: find by port
+      pid=$(lsof -ti :${GPUSCHED_PORT:-9123} 2>/dev/null | head -1 || true)
+      if [ -n "$pid" ]; then
+        kill "$pid" 2>/dev/null && echo "${GRN}✓ Stopped (pid=$pid)${RST}"
+      else
+        echo "${DIM}No scheduler found running${RST}"
+      fi
+    fi
+    ;;
+  fg)
+    shift
+    python3 "$SRUN_DIR/run_server.py" "$@"
+    ;;
+  status)
+    curl -sf http://localhost:${GPUSCHED_PORT:-9123}/status | python3 -m json.tool 2>/dev/null \
+      && echo "${GRN}✓ Server is running${RST}" \
+      || echo "${RED}✗ Server is not running${RST}"
+    ;;
+  -h|--help|"")
+    usage ;;
+  *)
+    echo "${RED}Unknown command '$1'${RST}" >&2; usage; exit 1 ;;
+esac

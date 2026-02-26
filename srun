@@ -5,6 +5,7 @@
 set -euo pipefail
 
 GPUSCHED_URL="${GPUSCHED_URL:-http://localhost:9123}"
+SRUN_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── colours ─────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -16,6 +17,23 @@ fi
 
 die() { echo "${RED}error:${RST} $*" >&2; exit 1; }
 
+# ── subcommands ─────────────────────────────────────────────
+case "${1:-}" in
+  update)
+    echo "${DIM}Updating local-gpu-scheduler...${RST}"
+    git -C "$SRUN_DIR" pull
+    echo "${GRN}✓ Updated${RST}"
+    exit 0 ;;
+  status)
+    curl -sf "${GPUSCHED_URL}/status" | python3 -m json.tool 2>/dev/null \
+      || die "cannot reach scheduler at ${GPUSCHED_URL}"
+    exit 0 ;;
+  jobs)
+    curl -sf "${GPUSCHED_URL}/jobs" | python3 -m json.tool 2>/dev/null \
+      || die "cannot reach scheduler at ${GPUSCHED_URL}"
+    exit 0 ;;
+esac
+
 # ── parse args ──────────────────────────────────────────────
 ngpus=1
 while [[ $# -gt 0 ]]; do
@@ -25,7 +43,11 @@ while [[ $# -gt 0 ]]; do
       cat <<EOF
 ${BOLD}srun${RST} — acquire GPUs and run a command
 
-${BOLD}Usage:${RST}  srun [-n NUM_GPUS] command [args...]
+${BOLD}Usage:${RST}
+  srun [-n NUM_GPUS] command [args...]   Run a GPU job
+  srun update                            Self-update (git pull)
+  srun status                            Show scheduler status
+  srun jobs                              List running jobs
 
 ${BOLD}Options:${RST}
   -n, --num-gpus N   Number of GPUs needed (default: 1)
@@ -60,9 +82,9 @@ job_id=$(echo "$resp" | jq -r '.job_id')
 
 [[ "$gpus" == "null" || -z "$gpus" ]] && die "scheduler returned no GPUs"
 
-echo "${GRN}srun: acquired GPU(s) ${BOLD}${CUDA_VISIBLE_DEVICES}${RST}${GRN} (job=${job_id}).${RST}"
 CUDA_VISIBLE_DEVICES="$gpus"
-echo "${GRN}Set CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}${RST}"
+echo "${GRN}srun: acquired GPU(s) ${BOLD}${CUDA_VISIBLE_DEVICES}${RST}${GRN} (job=${job_id})${RST}"
+export CUDA_VISIBLE_DEVICES
 
 # ── exec the user's command with assigned GPUs ──────────────
 exec "$@"
