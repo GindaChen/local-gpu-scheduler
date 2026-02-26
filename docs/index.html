@@ -386,7 +386,7 @@
     </div>
 
     <section>
-      <h2>Demo</h2>
+      <h2>Quick Start</h2>
       <div class="terminal">
         <div class="terminal-bar">
           <div class="terminal-dot r"></div>
@@ -395,10 +395,19 @@
           <div class="terminal-title">terminal</div>
         </div>
         <div class="terminal-body">
-          <span class="out"># Start the scheduler</span><br>
-          <span class="prompt">$</span> <span class="cmd">srun-server start</span><br>
-          <span class="ok">gpusched daemon started (pid=42019)</span><br>
-          <br>
+          <span class="out"># Start the scheduler in tmux (recommended)</span><br>
+          <span class="prompt">$</span> <span class="cmd">tmux new -d -s gpusched 'srun-server fg'</span><br>
+          <span class="ok">gpusched daemon started</span><br>
+        </div>
+      </div>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dot r"></div>
+          <div class="terminal-dot y"></div>
+          <div class="terminal-dot g"></div>
+          <div class="terminal-title">terminal</div>
+        </div>
+        <div class="terminal-body">
           <span class="out"># Run a GPU job — blocks until a GPU is free</span><br>
           <span class="prompt">$</span> <span class="cmd">srun python train.py --epochs 50</span><br>
           <span class="out">srun: requesting 1 GPU(s) from scheduler (pid=42053)...</span><br>
