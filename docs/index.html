@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>local-gpu-scheduler — Simple GPU Scheduling</title>
+  <meta name="description" content="A dead-simple GPU scheduler for shared local machines. Like Slurm, but zero-install.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --border: #1e1e2e;
+      --text: #e0e0e8;
+      --dim: #6b6b80;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.15);
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --cyan: #06b6d4;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 80px 0 60px;
+    }
+
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.2rem;
+      color: var(--dim);
+      max-width: 500px;
+      margin: 0 auto 32px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      color: var(--dim);
+      margin-bottom: 24px;
+    }
+
+    /* Install box */
+    .install-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin: 0 auto 60px;
+      max-width: 700px;
+      position: relative;
+    }
+
+    .install-box label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--dim);
+      margin-bottom: 10px;
+    }
+
+    .install-cmd {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .install-cmd code {
+      flex: 1;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--green);
+      white-space: nowrap;
+      overflow-x: auto;
+    }
+
+    .copy-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .copy-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px var(--accent-glow); }
+    .copy-btn.copied { background: var(--green); }
+
+    /* Sections */
+    section {
+      margin-bottom: 60px;
+    }
+
+    section h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      letter-spacing: -0.02em;
+    }
+
+    /* Terminal demo */
+    .terminal {
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .terminal-bar {
+      background: #161b22;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .terminal-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+    }
+
+    .terminal-dot.r { background: var(--red); }
+    .terminal-dot.y { background: var(--yellow); }
+    .terminal-dot.g { background: var(--green); }
+
+    .terminal-title {
+      flex: 1;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--dim);
+    }
+
+    .terminal-body {
+      padding: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+
+    .terminal-body .prompt { color: var(--cyan); }
+    .terminal-body .cmd { color: #e0e0e8; }
+    .terminal-body .out { color: var(--dim); }
+    .terminal-body .ok { color: var(--green); }
+    .terminal-body .warn { color: var(--yellow); }
+
+    /* How it works */
+    .flow {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .flow-step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      transition: border-color 0.2s;
+    }
+
+    .flow-step:hover { border-color: var(--accent); }
+
+    .flow-num {
+      background: var(--accent);
+      color: #fff;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .flow-step h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .flow-step p {
+      font-size: 0.85rem;
+      color: var(--dim);
+    }
+
+    /* Comparison table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-weight: 600;
+      color: var(--dim);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    td:first-child { font-weight: 500; }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 40px 0;
+      color: var(--dim);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="hero">
+      <div class="badge">⚡ Zero dependencies · ~200 lines</div>
+      <h1>local-gpu-scheduler</h1>
+      <p>Like Slurm's <code>srun</code>, but for your local machine. Set up in 60 seconds, no root required.</p>
+    </div>
+
+    <div class="install-box">
+      <label>Install with one command</label>
+      <div class="install-cmd">
+        <code id="install-code">curl -sSL https://raw.githubusercontent.com/GindaChen/local-gpu-scheduler/main/install.sh | bash</code>
+        <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
+      </div>
+    </div>
+
+    <section>
+      <h2>Demo</h2>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dot r"></div>
+          <div class="terminal-dot y"></div>
+          <div class="terminal-dot g"></div>
+          <div class="terminal-title">terminal</div>
+        </div>
+        <div class="terminal-body">
+          <span class="out"># Start the scheduler (once)</span><br>
+          <span class="prompt">$</span> <span class="cmd">python run_server.py --detach</span><br>
+          <span class="ok">gpusched daemon started (pid=42019)</span><br>
+          <br>
+          <span class="out"># Run a GPU job — blocks until a GPU is free</span><br>
+          <span class="prompt">$</span> <span class="cmd">srun python train.py --epochs 50</span><br>
+          <span class="out">srun: requesting 1 GPU(s) from scheduler (pid=42053)...</span><br>
+          <span class="ok">srun: acquired GPU(s) <b>0</b> (job=a3f1c8e2).</span><br>
+          <span class="ok">Set CUDA_VISIBLE_DEVICES=0</span><br>
+          <span class="cmd">Training started on GPU 0... ████████████ 100%</span><br>
+          <br>
+          <span class="out"># Multi-GPU</span><br>
+          <span class="prompt">$</span> <span class="cmd">srun -n 4 torchrun --nproc_per_node=4 train.py</span><br>
+          <span class="out">srun: requesting 4 GPU(s) from scheduler (pid=42071)...</span><br>
+          <span class="ok">srun: acquired GPU(s) <b>0,1,2,3</b> (job=b7d2e9f1).</span><br>
+          <span class="ok">Set CUDA_VISIBLE_DEVICES=0,1,2,3</span><br>
+          <br>
+          <span class="out"># Monitor with the TUI dashboard</span><br>
+          <span class="prompt">$</span> <span class="cmd">python tui.py</span><br>
+          <span class="ok">🖥 local-gpu-scheduler v0.1.0 | :9123 | up 14m 22s</span><br>
+          <span class="cmd">GPUs [██░░████░░░░] 4/8 allocated</span><br>
+          <span class="warn">Running: 2  Queued: 1  Total: 5</span><br>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>How it works</h2>
+      <div class="flow">
+        <div class="flow-step">
+          <div class="flow-num">1</div>
+          <div><h3>srun sends your PID to the server</h3><p>Requests N GPUs. Blocks until they're available.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">2</div>
+          <div><h3>Server checks nvidia-smi</h3><p>Polls every second. FIFO queue — first come, first served.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">3</div>
+          <div><h3>GPUs assigned → your command runs</h3><p><code>CUDA_VISIBLE_DEVICES</code> is set, then <code>exec</code> replaces srun with your command.</p></div>
+        </div>
+        <div class="flow-step">
+          <div class="flow-num">4</div>
+          <div><h3>Process exits → GPUs released</h3><p>Server monitors your PID. When it's done, GPUs go back to the pool.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Slurm vs. this</h2>
+      <table>
+        <thead>
+          <tr><th></th><th>Slurm</th><th>local-gpu-scheduler</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Install time</td><td>30+ min</td><td>60 sec</td></tr>
+          <tr><td>Dependencies</td><td>munge, MySQL, slurmctld</td><td>Python 3, curl, jq</td></tr>
+          <tr><td>Config files</td><td>slurm.conf (100+ lines)</td><td>None</td></tr>
+          <tr><td>Root required</td><td>Usually yes</td><td>No</td></tr>
+          <tr><td>Multi-node</td><td>✅</td><td>Single machine</td></tr>
+          <tr><td>Best for</td><td>Clusters, 10+ users</td><td>1 machine, small team</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      <a href="https://github.com/GindaChen/local-gpu-scheduler">GitHub</a> ·
+      Built for teams who just need GPUs to not fight.
+    </footer>
+
+  </div>
+
+  <script>
+    function copyInstall(btn) {
+      const text = document.getElementById('install-code').textContent;
+      navigator.clipboard.writeText(text);
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    }
+  </script>
+</body>
+</html>
