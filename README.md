@@ -28,15 +28,17 @@ echo 'export PATH="'$(pwd)':$PATH"' >> ~/.bashrc && source ~/.bashrc
 ## Quick Start
 
 ```bash
-# 1. Start the server
-srun-server start                  # runs in foreground
-srun-server start --tmux           # runs server + TUI in tmux split
+# 1. Start the server (launches tmux with server + TUI)
+srun-server start
 
 # 2. Run a GPU job (blocks until GPU available)
 srun python train.py --epochs 50
 
 # 3. Multi-GPU
 srun -n 4 torchrun --nproc_per_node=4 train.py
+
+# 4. Auto-retry (detects GPU errors and adjusts)
+srun-agent python train.py
 ```
 
 ---
@@ -52,13 +54,22 @@ srun jobs                              # list all jobs
 srun update                            # self-update (git pull)
 ```
 
+### `srun-agent` — smart retry
+
+```bash
+srun-agent [-n NUM_GPUS] command [args...]   # auto-retry with GPU fix
+srun-agent --max-retries 5 python train.py   # custom retry limit
+```
+
+On failure, reads the log and adjusts GPU count if the error is fixable (e.g. `nproc_per_node` mismatch, `world_size` error).
+
 ### `srun-server` — manage the server
 
 ```bash
-srun-server start [--tmux] [--port PORT]   # start (foreground, or tmux with --tmux)
-srun-server stop                           # stop server / tmux session
-srun-server status                         # check if running
-srun-server tui                            # open TUI dashboard
+srun-server start [--no-tmux] [--port PORT]   # start (tmux default, --no-tmux for foreground)
+srun-server stop                               # stop server / tmux session
+srun-server status                             # check if running
+srun-server tui                                # open TUI dashboard
 ```
 
 ### Monitor — TUI dashboard

@@ -422,13 +422,13 @@
           <div class="terminal-title">start the global scheduler server (one time)</div>
         </div>
         <div class="terminal-body">
-          <span class="out"># Start the server</span><br>
+          <span class="out"># Start server + TUI in tmux (default)</span><br>
           <span class="prompt">$</span> <span class="cmd">srun-server start</span><br>
-          <span class="ok">gpusched server on :9123</span><br>
-          <br>
-          <span class="out"># Or with TUI in tmux</span><br>
-          <span class="prompt">$</span> <span class="cmd">srun-server start --tmux</span><br>
           <span class="ok">✓ Scheduler started in tmux session 'gpusched'</span><br>
+          <br>
+          <span class="out"># Or foreground only</span><br>
+          <span class="prompt">$</span> <span class="cmd">srun-server start --no-tmux</span><br>
+          <span class="ok">gpusched server on :9123</span><br>
         </div>
       </div>
 
@@ -447,7 +447,12 @@
           <h3>srun-server</h3>
           <p>Manage the scheduler</p>
           <code>srun-server start</code><br>
-          <code>srun-server start --tmux</code>
+          <code>srun-server stop</code>
+        </div>
+        <div class="cmd-card">
+          <h3>srun-agent</h3>
+          <p>Auto-retry with GPU fix</p>
+          <code>srun-agent python train.py</code>
         </div>
         <div class="cmd-card">
           <h3>srun status / jobs</h3>

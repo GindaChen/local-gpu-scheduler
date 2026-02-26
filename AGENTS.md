@@ -2,25 +2,38 @@
 
 > For AI agents and automation tools interacting with this project.
 
-## What This Is
-
-A minimal local GPU job scheduler. A Python server on port `9123` manages GPU allocation via `nvidia-smi`. The `srun` shell script acquires GPUs then `exec`s the user's command.
-
 **Repo:** https://github.com/GindaChen/local-gpu-scheduler
 
-## Server Endpoints
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `srun <cmd>` | Acquire 1 GPU and run command |
+| `srun -n N <cmd>` | Acquire N GPUs and run command |
+| `srun-agent <cmd>` | Like srun, but auto-retries with adjusted GPU count on failure |
+| `srun-server start` | Start server + TUI in tmux (default) |
+| `srun-server start --no-tmux` | Start server in foreground |
+| `srun-server stop` | Stop the server |
+| `srun-server status` | Check if server is running |
+| `srun-server tui` | Open TUI dashboard |
+| `srun status` | Query scheduler status |
+| `srun jobs` | List running jobs |
+| `srun update` | Self-update (git pull) |
+| `srun-tui` | Standalone TUI dashboard |
+
+## Server API
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/status` | Server identity, uptime, GPU counts, queue depth |
 | `GET` | `/jobs` | All jobs with id, status, gpus, pid |
-| `POST` | `/acquire` | Request GPUs (blocks until assigned). Body: `{"pid": int, "num_gpus": int}` |
+| `POST` | `/acquire` | Request GPUs (blocks). Body: `{"pid": int, "num_gpus": int}` |
 
-### Verify the server is running
+### Verify the server
 
 ```bash
 curl -sf http://localhost:9123/status | jq .service
-# Should return: "local-gpu-scheduler"
+# Returns: "local-gpu-scheduler"
 ```
 
 ## Key Files
@@ -28,10 +41,12 @@ curl -sf http://localhost:9123/status | jq .service
 | File | Purpose |
 |------|---------|
 | `srun` | Shell CLI — acquires GPUs, `exec`s command |
+| `srun-agent` | Shell wrapper — auto-retries with GPU fix |
+| `srun-server` | Shell CLI — start/stop/status server |
+| `srun-tui` | Curses TUI dashboard |
 | `server.py` | HTTP server — FIFO queue, PID monitoring |
 | `gpu.py` | Wraps `nvidia-smi` for GPU detection |
-| `tui.py` | Live dashboard |
-| `run_server.py` | Entry point (`--detach`, `--port`) |
+| `run_server.py` | Server entry point |
 
 ---
 
@@ -45,21 +60,18 @@ Drop this into any project's `AGENTS.md` to make agents use `srun`:
 This machine uses a shared GPU scheduler. Use `srun` to acquire GPUs before running GPU workloads.
 
 ```bash
-# Run on 1 GPU
-srun python train.py
-
-# Run on multiple GPUs
-srun -n 4 torchrun --nproc_per_node=4 train.py
+srun python train.py                           # 1 GPU
+srun -n 4 torchrun --nproc_per_node=4 train.py # multi-GPU
+srun-agent python train.py                     # auto-retry with GPU fix
 ```
 
-If `srun` is not installed, install it:
+If `srun` is not installed:
 ```bash
-git clone https://github.com/GindaChen/local-gpu-scheduler.git /tmp/gpu-scheduler
-echo 'export PATH="/tmp/gpu-scheduler:$PATH"' >> ~/.bashrc && source ~/.bashrc
+curl -sSL https://raw.githubusercontent.com/GindaChen/local-gpu-scheduler/main/install.sh | bash
 ```
 
-If the scheduler server is not running (`srun` hangs or errors), start it:
+If the scheduler server is not running:
 ```bash
-python /tmp/gpu-scheduler/run_server.py --detach
+srun-server start
 ```
 ````
