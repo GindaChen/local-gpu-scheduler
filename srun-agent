@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""srun-agent — runs srun, reads failures, adjusts GPU count, retries.
+
+Usage:
+  srun-agent python train.py
+  srun-agent -n 2 torchrun --nproc_per_node=2 train.py
+  srun-agent --max-retries 3 python train.py
+
+The agent always goes through srun — it never bypasses the scheduler.
+"""
+import os, re, subprocess, sys, tempfile
+
+SRUN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "srun")
+MAX_RETRIES = 3
+
+# ── Error patterns → action ──────────────────────────────────────────
+# Each pattern returns a suggested num_gpus given the current value,
+# or None if it can't determine.
+
+def _parse_nproc(cmd_args):
+    """Extract --nproc_per_node from the command args."""
+    for i, arg in enumerate(cmd_args):
+        if arg == "--nproc_per_node" and i + 1 < len(cmd_args):
+            return int(cmd_args[i + 1])
+        m = re.match(r"--nproc_per_node=(\d+)", arg)
+        if m:
+            return int(m.group(1))
+    return None
+
+def _suggest_gpus(log_text, current_n, cmd_args):
+    """Read the log and suggest a new GPU count, or None if no fix found."""
+    # Pattern: "RuntimeError: Expected ... nproc_per_node (N) ... CUDA devices (M)"
+    m = re.search(r"nproc_per_node.*?(\d+).*?CUDA.*?(\d+)", log_text)
+    if m:
+        requested = int(m.group(1))
+        if requested != current_n:
+            return requested
+
+    # Pattern: torchrun/accelerate complaining about world_size mismatch
+    m = re.search(r"world.size.*?(\d+).*?(?:gpu|device|cuda).*?(\d+)", log_text, re.I)
+    if m:
+        needed = int(m.group(1))
+        if needed != current_n:
+            return needed
+
+    # Pattern: nproc_per_node in the command doesn't match -n
+    nproc = _parse_nproc(cmd_args)
+    if nproc and nproc != current_n:
+        return nproc
+
+    # Pattern: "CUDA out of memory" — can't fix with more GPUs from scheduler,
+    # but we note it for the user
+    if re.search(r"CUDA out of memory|OutOfMemoryError", log_text):
+        return None  # no GPU count fix will help
+
+    # Pattern: "no CUDA GPUs are available" — need at least 1
+    if re.search(r"no CUDA.*available|CUDA.*not available", log_text, re.I):
+        if current_n < 1:
+            return 1
+
+    return None
+
+# ── Main ─────────────────────────────────────────────────────────────
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        sys.exit(0)
+
+    max_retries = MAX_RETRIES
+    # Parse our own flags
+    if "--max-retries" in args:
+        idx = args.index("--max-retries")
+        max_retries = int(args[idx + 1])
+        args = args[:idx] + args[idx + 2:]
+
+    # Parse initial -n from args (pass-through to srun)
+    num_gpus = 1
+    srun_flags = []
+    cmd_args = []
+    i = 0
+    while i < len(args):
+        if args[i] in ("-n", "--num-gpus") and i + 1 < len(args):
+            num_gpus = int(args[i + 1])
+            srun_flags += [args[i], args[i + 1]]
+            i += 2
+        elif args[i].startswith("-"):
+            srun_flags.append(args[i])
+            i += 1
+        else:
+            cmd_args = args[i:]
+            break
+
+    if not cmd_args:
+        print("error: no command given", file=sys.stderr)
+        sys.exit(1)
+
+    DIM = "\033[2m" if sys.stdout.isatty() else ""
+    GRN = "\033[32m" if sys.stdout.isatty() else ""
+    YLW = "\033[33m" if sys.stdout.isatty() else ""
+    RED = "\033[31m" if sys.stdout.isatty() else ""
+    RST = "\033[0m" if sys.stdout.isatty() else ""
+
+    for attempt in range(1, max_retries + 1):
+        srun_cmd = [SRUN, "-n", str(num_gpus)] + cmd_args
+        print(f"{DIM}srun-agent: attempt {attempt}/{max_retries} → {' '.join(srun_cmd)}{RST}")
+
+        # Capture output while still showing it to the user (via script)
+        log_file = tempfile.mktemp(suffix=".log", prefix="srun_agent_")
+        # Use script to preserve colors + capture
+        script_cmd = ["script", "-q", "-c", " ".join(srun_cmd), log_file]
+        rc = subprocess.call(script_cmd)
+
+        if rc == 0:
+            print(f"{GRN}srun-agent: ✓ success{RST}")
+            _cleanup(log_file)
+            sys.exit(0)
+
+        # Read the captured log
+        try:
+            log_text = open(log_file).read()
+        except FileNotFoundError:
+            log_text = ""
+
+        suggestion = _suggest_gpus(log_text, num_gpus, cmd_args)
+
+        if suggestion is None:
+            print(f"{RED}srun-agent: ✗ failed (exit {rc}), no GPU fix found{RST}")
+            print(f"{DIM}srun-agent: log saved to {log_file}{RST}")
+            sys.exit(rc)
+
+        if suggestion == num_gpus:
+            print(f"{RED}srun-agent: ✗ failed (exit {rc}), already using {num_gpus} GPU(s){RST}")
+            print(f"{DIM}srun-agent: log saved to {log_file}{RST}")
+            sys.exit(rc)
+
+        print(f"{YLW}srun-agent: ✗ failed with {num_gpus} GPU(s), retrying with {suggestion}{RST}")
+        num_gpus = suggestion
+        _cleanup(log_file)
+
+    print(f"{RED}srun-agent: ✗ exhausted {max_retries} retries{RST}")
+    sys.exit(1)
+
+def _cleanup(path):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+if __name__ == "__main__":
+    main()
