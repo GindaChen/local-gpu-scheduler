@@ -7,23 +7,18 @@ Like Slurm's `srun`, but zero-install and ~200 lines of code.
 
 ---
 
-## Why?
-
-On a shared GPU machine, people accidentally step on each other's GPUs. Slurm solves this but requires a database, daemon users, cgroup config, and 30+ minutes of setup.
-
-This project gives you the same core workflow — **request GPUs → wait → run** — in a few files you can set up in 60 seconds.
-
----
-
 ## Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/GindaChen/local-gpu-scheduler/main/install.sh | bash
+```
+
+Or manually:
 
 ```bash
 git clone https://github.com/GindaChen/local-gpu-scheduler.git
 cd local-gpu-scheduler
-
-# Add srun to your PATH
-echo 'export PATH="'$(pwd)':$PATH"' >> ~/.bashrc
-source ~/.bashrc
+echo 'export PATH="'$(pwd)':$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
 **Requirements:** Python 3.8+, `nvidia-smi`, `curl`, `jq`
@@ -32,29 +27,43 @@ source ~/.bashrc
 
 ## Quick Start
 
-**1. Start the server**
-
 ```bash
-python run_server.py              # foreground
-python run_server.py --detach     # background (daemon)
-python run_server.py --port 8080  # custom port
+# 1. Start the server
+srun-server start
+
+# 2. Run a GPU job (blocks until GPU available)
+srun python train.py --epochs 50
+
+# 3. Multi-GPU
+srun -n 4 torchrun --nproc_per_node=4 train.py
 ```
 
-**2. Run a GPU job**
+---
+
+## Commands
+
+### `srun` — run GPU jobs
 
 ```bash
-srun python train.py --epochs 50                  # 1 GPU
-srun -n 4 torchrun --nproc_per_node=4 train.py    # 4 GPUs
+srun [-n NUM_GPUS] command [args...]   # acquire GPUs + run
+srun status                            # show scheduler status
+srun jobs                              # list all jobs
+srun update                            # self-update (git pull)
 ```
 
-`srun` blocks until GPUs are available, sets `CUDA_VISIBLE_DEVICES`, then runs your command.
-
-**3. Monitor**
+### `srun-server` — manage the server
 
 ```bash
-python tui.py                              # live TUI dashboard (q to quit)
-curl -s localhost:9123/status | jq .       # server health
-curl -s localhost:9123/jobs   | jq .       # job list
+srun-server start [--port PORT]        # start as daemon
+srun-server stop                       # stop the daemon
+srun-server status                     # check if running
+srun-server fg [--port PORT]           # run in foreground
+```
+
+### Monitor — TUI dashboard
+
+```bash
+python tui.py                          # live GPU bar + job table (q to quit)
 ```
 
 ---
@@ -77,8 +86,6 @@ curl -s localhost:9123/jobs   | jq .       # job list
 └─────────────────┘
 ```
 
----
-
 ## Server API
 
 | Method | Path | Description |
@@ -87,42 +94,12 @@ curl -s localhost:9123/jobs   | jq .       # job list
 | `GET` | `/jobs` | All jobs with id, status, gpus, pid |
 | `POST` | `/acquire` | Request GPUs (blocks). Body: `{"pid": int, "num_gpus": int}` |
 
----
-
 ## Configuration
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
 | `GPUSCHED_PORT` | `9123` | Server port |
 | `GPUSCHED_URL` | `http://localhost:9123` | Where `srun` connects |
-
----
-
-## Files
-
-| File | Description |
-|------|-------------|
-| `srun` | Shell CLI — acquires GPUs, sets env, `exec`s command |
-| `server.py` | HTTP server — FIFO queue, GPU dispatch, PID monitor |
-| `gpu.py` | Wraps `nvidia-smi` for GPU detection |
-| `tui.py` | Curses dashboard — GPU bar, job table, server health |
-| `run_server.py` | Entry point with `--detach` and `--port` flags |
-
----
-
-## Slurm vs. local-gpu-scheduler
-
-| | Slurm | This |
-|---|---|---|
-| Install time | 30+ min | 60 sec |
-| Dependencies | munge, MySQL, slurmctld | Python 3, curl, jq |
-| Config files | `slurm.conf` (100+ lines) | None |
-| Root required | Usually | No |
-| Multi-node | ✅ | ❌ Single machine |
-| Fair-share / priorities | ✅ | ❌ FIFO only |
-| Best for | Clusters, 10+ users | 1 machine, small team |
-
----
 
 ## Tests
 
