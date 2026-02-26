@@ -43,8 +43,8 @@ done
 
 [[ $# -eq 0 ]] && die "no command given — usage: srun [-n N] command [args...]"
 
-command -v curl &>/dev/null || die "'curl' is required"
-command -v jq   &>/dev/null || die "'jq' is required"
+command -v curl &>/dev/null || die "'curl' is required — install with: sudo apt-get install -y curl"
+command -v jq   &>/dev/null || die "'jq' is required — install with: sudo apt-get install -y jq"
 
 # ── request GPUs from scheduler ─────────────────────────────
 pid=$$
