@@ -387,37 +387,21 @@
 
     <section>
       <h2>Quick Start</h2>
+
       <div class="terminal">
         <div class="terminal-bar">
           <div class="terminal-dot r"></div>
           <div class="terminal-dot y"></div>
           <div class="terminal-dot g"></div>
-          <div class="terminal-title">terminal</div>
+          <div class="terminal-title">use srun to run your job</div>
         </div>
         <div class="terminal-body">
-          <span class="out"># Start the server</span><br>
-          <span class="prompt">$</span> <span class="cmd">srun-server start</span><br>
-          <span class="ok">gpusched server on :9123</span><br>
-          <br>
-          <span class="out"># Or with TUI in tmux</span><br>
-          <span class="prompt">$</span> <span class="cmd">srun-server start --tmux</span><br>
-          <span class="ok">✓ Scheduler started in tmux session 'gpusched'</span><br>
-        </div>
-      </div>
-      <div class="terminal">
-        <div class="terminal-bar">
-          <div class="terminal-dot r"></div>
-          <div class="terminal-dot y"></div>
-          <div class="terminal-dot g"></div>
-          <div class="terminal-title">terminal</div>
-        </div>
-        <div class="terminal-body">
-          <span class="out"># Run a GPU job — blocks until a GPU is free</span><br>
-          <span class="prompt">$</span> <span class="cmd">srun python train.py --epochs 50</span><br>
+          <span class="out"># Run a single GPU job</span><br>
+          <span class="prompt">$</span> <span class="cmd">srun python train.py</span><br>
           <span class="out">srun: requesting 1 GPU(s) from scheduler (pid=42053)...</span><br>
-          <span class="ok">srun: acquired GPU(s) <b>0</b> (job=a3f1c8e2)</span><br>
+          <!-- <span class="ok">srun: acquired GPU(s) <b>0</b> (job=a3f1c8e2)</span><br>
           <span class="ok">Set CUDA_VISIBLE_DEVICES=0</span><br>
-          <span class="cmd">Training started on GPU 0... ████████████ 100%</span><br>
+          <span class="cmd">Training started on GPU 0... ████████████ 100%</span><br> -->
           <br>
           <span class="out"># Multi-GPU</span><br>
           <span class="prompt">$</span> <span class="cmd">srun -n 4 torchrun --nproc_per_node=4 train.py</span><br>
@@ -429,6 +413,25 @@
           <span class="ok">b7d2e9f1 running 0,1 torchrun train.py</span><br>
         </div>
       </div>
+
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dot r"></div>
+          <div class="terminal-dot y"></div>
+          <div class="terminal-dot g"></div>
+          <div class="terminal-title">start the global scheduler server (one time)</div>
+        </div>
+        <div class="terminal-body">
+          <span class="out"># Start the server</span><br>
+          <span class="prompt">$</span> <span class="cmd">srun-server start</span><br>
+          <span class="ok">gpusched server on :9123</span><br>
+          <br>
+          <span class="out"># Or with TUI in tmux</span><br>
+          <span class="prompt">$</span> <span class="cmd">srun-server start --tmux</span><br>
+          <span class="ok">✓ Scheduler started in tmux session 'gpusched'</span><br>
+        </div>
+      </div>
+
     </section>
 
     <section>
