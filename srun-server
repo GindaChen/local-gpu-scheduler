@@ -33,7 +33,7 @@ EOF
 
 # Check if something is already on the port; identify if it's us
 check_port() {
-  resp=$(curl -sf "http://localhost:${PORT}/status" 2>/dev/null || true)
+  resp=$(curl -sf --connect-timeout 2 --max-time 5 "http://localhost:${PORT}/status" 2>/dev/null || true)
   if [ -n "$resp" ]; then
     svc=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('service',''))" 2>/dev/null || true)
     if [ "$svc" = "local-gpu-scheduler" ]; then
@@ -92,7 +92,7 @@ case "${1:-}" in
     python3 "$SRUN_DIR/srun-tui"
     ;;
   status)
-    resp=$(curl -sf "http://localhost:${PORT}/status" 2>/dev/null || true)
+    resp=$(curl -sf --connect-timeout 2 --max-time 5 "http://localhost:${PORT}/status" 2>/dev/null || true)
     if [ -n "$resp" ]; then
       echo "$resp" | python3 -m json.tool
       echo "${GRN}✓ Server is running on port ${PORT}${RST}"

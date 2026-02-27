@@ -1,5 +1,5 @@
 """Minimal GPU job scheduler server — stdlib only."""
-import http.server, json, os, signal, threading, time, uuid
+import http.server, json, os, socketserver, threading, time, uuid
 
 from gpu import get_all_gpus, get_free_gpu_indices
 
@@ -25,6 +25,17 @@ def scheduler_loop():
     while True:
         time.sleep(1)
         with lock:
+            # Drop queued requests whose PID has already exited
+            alive_waiters = []
+            for evt, req in waiters:
+                if _pid_alive(req["pid"]):
+                    alive_waiters.append((evt, req))
+                else:
+                    # Unblock any thread waiting on this request; don't assign GPUs to dead PIDs
+                    req["result"] = {"error": "pid not alive"}
+                    evt.set()
+            waiters[:] = alive_waiters
+
             # 1. Reap finished jobs (PID exited)
             for jid, j in list(jobs.items()):
                 if j["status"] == "running" and not _pid_alive(j["pid"]):
@@ -105,7 +116,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
 
 def serve():
-    s = http.server.HTTPServer(("", PORT), Handler)
+    class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        pass
+    s = ThreadedHTTPServer(("", PORT), Handler)
     t = threading.Thread(target=scheduler_loop, daemon=True)
     t.start()
     print(f"gpusched server on :{PORT}")

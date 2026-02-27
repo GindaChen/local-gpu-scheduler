@@ -53,11 +53,11 @@ case "${1:-}" in
     echo "${GRN}✓ Updated${RST}"
     exit 0 ;;
   status)
-    curl -sf "${GPUSCHED_URL}/status" | python3 -m json.tool 2>/dev/null \
+    curl -sf --connect-timeout 2 --max-time 5 "${GPUSCHED_URL}/status" | python3 -m json.tool 2>/dev/null \
       || die "cannot reach scheduler at ${GPUSCHED_URL}"
     exit 0 ;;
   jobs)
-    curl -sf "${GPUSCHED_URL}/jobs" | python3 -m json.tool 2>/dev/null \
+    curl -sf --connect-timeout 2 --max-time 5 "${GPUSCHED_URL}/jobs" | python3 -m json.tool 2>/dev/null \
       || die "cannot reach scheduler at ${GPUSCHED_URL}"
     exit 0 ;;
   -h|--help)
@@ -84,7 +84,7 @@ command -v jq   &>/dev/null || die "'jq' is required — install with: sudo apt-
 pid=$$
 echo "${DIM}srun: requesting ${ngpus} GPU(s) from scheduler (pid=${pid})...${RST}"
 
-resp=$(curl -sf -X POST -H "Content-Type: application/json" \
+resp=$(curl -sf --connect-timeout 2 -X POST -H "Content-Type: application/json" \
   -d "{\"pid\":${pid},\"num_gpus\":${ngpus}}" \
   "${GPUSCHED_URL}/acquire" 2>/dev/null) \
   || die "cannot reach scheduler at ${GPUSCHED_URL} — is the server running?"
