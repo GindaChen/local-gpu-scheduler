@@ -1,5 +1,5 @@
 """Minimal GPU job scheduler server — stdlib only."""
-import http.server, json, os, socketserver, threading, time, uuid
+import http.server, json, os, socket, socketserver, threading, time, uuid
 
 from gpu import get_all_gpus, get_free_gpu_indices
 
@@ -118,8 +118,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             req = {"pid": pid, "num_gpus": num_gpus, "result": None}
             with lock:
                 waiters.append((evt, req))
-            # Block until scheduler assigns GPUs
-            evt.wait()
+            # Wait for GPUs; periodically check if client disconnected (e.g. remote client or connection drop)
+            while not evt.is_set():
+                evt.wait(timeout=1)
+                if evt.is_set():
+                    break
+                try:
+                    self.connection.setblocking(False)
+                    try:
+                        peek = self.connection.recv(1, socket.MSG_PEEK)
+                    finally:
+                        self.connection.setblocking(True)
+                    if peek == b"":
+                        raise ConnectionError("closed")
+                except BlockingIOError:
+                    pass  # no data yet, connection still open
+                except (BrokenPipeError, ConnectionResetError, OSError, ConnectionError):
+                    with lock:
+                        waiters[:] = [(e, r) for (e, r) in waiters if (e, r) != (evt, req)]
+                    return
             self._json(200, req["result"])
         else:
             self._json(404, {"error": "not found"})
