@@ -105,6 +105,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/acquire":
             pid = data["pid"]
             num_gpus = data.get("num_gpus", 1)
+            if num_gpus < 1:
+                self._json(400, {"error": "num_gpus must be at least 1"})
+                return
             total_gpus = len(get_all_gpus())
             if num_gpus > total_gpus:
                 self._json(400, {
