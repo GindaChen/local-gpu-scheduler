@@ -105,6 +105,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/acquire":
             pid = data["pid"]
             num_gpus = data.get("num_gpus", 1)
+            total_gpus = len(get_all_gpus())
+            if num_gpus > total_gpus:
+                self._json(400, {
+                    "error": f"requested {num_gpus} GPU(s) but only {total_gpus} available on this machine"
+                })
+                return
             evt = threading.Event()
             req = {"pid": pid, "num_gpus": num_gpus, "result": None}
             with lock:
