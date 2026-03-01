@@ -73,7 +73,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _body(self):
-        return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        """Parse JSON body; on error send 400 and return None."""
+        try:
+            cl = self.headers.get("Content-Length")
+            if cl is None or cl == "":
+                self._json(400, {"error": "missing Content-Length"})
+                return None
+            n = int(cl)
+            if n < 0:
+                self._json(400, {"error": "invalid Content-Length"})
+                return None
+            raw = self.rfile.read(n)
+            if not raw:
+                self._json(400, {"error": "empty body"})
+                return None
+            return json.loads(raw)
+        except ValueError:
+            self._json(400, {"error": "invalid Content-Length"})
+            return None
+        except json.JSONDecodeError as e:
+            self._json(400, {"error": f"invalid JSON: {e}"})
+            return None
 
     def log_message(self, fmt, *args):
         pass  # silence per-request logs
@@ -102,6 +122,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         data = self._body()
+        if data is None:
+            return
         if self.path == "/acquire":
             pid = data["pid"]
             num_gpus = data.get("num_gpus", 1)
