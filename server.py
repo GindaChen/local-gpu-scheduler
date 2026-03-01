@@ -1,5 +1,5 @@
 """Minimal GPU job scheduler server — stdlib only."""
-import http.server, json, os, signal, threading, time, uuid
+import http.server, json, os, socket, socketserver, threading, time, uuid
 
 from gpu import get_all_gpus, get_free_gpu_indices
 
@@ -25,6 +25,17 @@ def scheduler_loop():
     while True:
         time.sleep(1)
         with lock:
+            # Drop queued requests whose PID has already exited
+            alive_waiters = []
+            for evt, req in waiters:
+                if _pid_alive(req["pid"]):
+                    alive_waiters.append((evt, req))
+                else:
+                    # Unblock any thread waiting on this request; don't assign GPUs to dead PIDs
+                    req["result"] = {"error": "pid not alive"}
+                    evt.set()
+            waiters[:] = alive_waiters
+
             # 1. Reap finished jobs (PID exited)
             for jid, j in list(jobs.items()):
                 if j["status"] == "running" and not _pid_alive(j["pid"]):
@@ -62,7 +73,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _body(self):
-        return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        """Parse JSON body; on error send 400 and return None."""
+        try:
+            cl = self.headers.get("Content-Length")
+            if cl is None or cl == "":
+                self._json(400, {"error": "missing Content-Length"})
+                return None
+            n = int(cl)
+            if n < 0:
+                self._json(400, {"error": "invalid Content-Length"})
+                return None
+            raw = self.rfile.read(n)
+            if not raw:
+                self._json(400, {"error": "empty body"})
+                return None
+            return json.loads(raw)
+        except ValueError:
+            self._json(400, {"error": "invalid Content-Length"})
+            return None
+        except json.JSONDecodeError as e:
+            self._json(400, {"error": f"invalid JSON: {e}"})
+            return None
 
     def log_message(self, fmt, *args):
         pass  # silence per-request logs
@@ -91,21 +122,51 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         data = self._body()
+        if data is None:
+            return
         if self.path == "/acquire":
             pid = data["pid"]
             num_gpus = data.get("num_gpus", 1)
+            if num_gpus < 0:
+                self._json(400, {"error": "num_gpus cannot be negative"})
+                return
+            total_gpus = len(get_all_gpus())
+            if num_gpus > total_gpus:
+                self._json(400, {
+                    "error": f"requested {num_gpus} GPU(s) but only {total_gpus} available on this machine"
+                })
+                return
             evt = threading.Event()
             req = {"pid": pid, "num_gpus": num_gpus, "result": None}
             with lock:
                 waiters.append((evt, req))
-            # Block until scheduler assigns GPUs
-            evt.wait()
+            # Wait for GPUs; periodically check if client disconnected (e.g. remote client or connection drop)
+            while not evt.is_set():
+                evt.wait(timeout=1)
+                if evt.is_set():
+                    break
+                try:
+                    self.connection.setblocking(False)
+                    try:
+                        peek = self.connection.recv(1, socket.MSG_PEEK)
+                    finally:
+                        self.connection.setblocking(True)
+                    if peek == b"":
+                        raise ConnectionError("closed")
+                except BlockingIOError:
+                    pass  # no data yet, connection still open
+                except (BrokenPipeError, ConnectionResetError, OSError, ConnectionError):
+                    with lock:
+                        waiters[:] = [(e, r) for (e, r) in waiters if (e, r) != (evt, req)]
+                    return
             self._json(200, req["result"])
         else:
             self._json(404, {"error": "not found"})
 
 def serve():
-    s = http.server.HTTPServer(("", PORT), Handler)
+    class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        pass
+    s = ThreadedHTTPServer(("", PORT), Handler)
     t = threading.Thread(target=scheduler_loop, daemon=True)
     t.start()
     print(f"gpusched server on :{PORT}")

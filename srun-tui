@@ -3,6 +3,20 @@
 import curses, json, os, time, urllib.request
 
 URL = os.environ.get("GPUSCHED_URL", "http://localhost:9123")
+GPU_COL_WIDTH = 12  # max width for GPU column so it doesn't push COMMAND off
+
+def _gpu_fmt(gpus):
+    """Format GPU list to fit GPU_COL_WIDTH; use range (e.g. 0-5) when consecutive."""
+    if not gpus:
+        return "-"
+    gpus = sorted(gpus)
+    if all(gpus[i] == gpus[0] + i for i in range(len(gpus))):
+        s = f"{gpus[0]}-{gpus[-1]}" if len(gpus) > 1 else str(gpus[0])
+    else:
+        s = ",".join(map(str, gpus))
+    if len(s) > GPU_COL_WIDTH:
+        s = s[: GPU_COL_WIDTH - 2] + ".."
+    return s
 
 def _get(path):
     try:
@@ -50,7 +64,7 @@ def draw(stdscr):
         # ── Job table ─────────────────────────────────────
         y = 5
         if y < h:
-            hdr = f" {'JOB_ID':<10} {'STATUS':<12} {'GPU':<10} {'PID':<8} {'COMMAND'}"
+            hdr = f" {'JOB_ID':<10} {'STATUS':<12} {'GPU':<{GPU_COL_WIDTH}} {'PID':<8} {'COMMAND'}"
             stdscr.addnstr(y, 0, hdr, w, curses.A_BOLD | curses.A_UNDERLINE)
             y += 1
 
@@ -58,9 +72,9 @@ def draw(stdscr):
             for j in jobs:
                 if y >= h - 1:
                     break
-                gpu_str = ",".join(map(str, j.get("gpus") or ["-"]))
+                gpu_str = _gpu_fmt(j.get("gpus"))
                 cmd = j.get("cmd", j.get("num_gpus", ""))
-                line = f" {j['id']:<10} {j['status']:<12} {gpu_str:<10} {j['pid']:<8} {cmd}"
+                line = f" {j['id']:<10} {j['status']:<12} {gpu_str:<{GPU_COL_WIDTH}} {j['pid']:<8} {cmd}"
                 color = {"running": 1, "queued": 2, "done": 4, "failed": 3, "cancelled": 5}.get(j["status"], 0)
                 stdscr.addnstr(y, 0, line, w, curses.color_pair(color))
                 y += 1

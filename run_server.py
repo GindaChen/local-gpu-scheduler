@@ -19,7 +19,9 @@ def main():
         # Child: detach from terminal
         os.setsid()
         sys.stdin.close()
-        log = open(os.path.join(os.path.dirname(__file__), "logs", "server.log"), "a")
+        log_dir = os.path.join(os.path.dirname(__file__), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log = open(os.path.join(log_dir, "server.log"), "a")
         os.dup2(log.fileno(), 1)
         os.dup2(log.fileno(), 2)
 
